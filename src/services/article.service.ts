@@ -1,8 +1,39 @@
-import { PrismaClient, Status } from '@prisma/client';
+
+import { Prisma, PrismaClient, Status } from '../generated/prisma/client.js';
 
 const prisma = new PrismaClient();
 
 export class ArticleService {
+    static async getPublic(query: { category?: string; author?: string; q?: string; page: number; size: number }) {
+    const { category, author, q, page, size } = query;
+    const skip = (page - 1) * size;
+
+    // We define the type explicitly to fix the TS error
+    const where: Prisma.ArticleWhereInput = {
+      status: Status.Published,
+      deletedAt: null,
+      ...(category && { category }),
+      ...(author && { author: { name: { contains: author, mode: 'insensitive' } } }),
+      ...(q && {
+        OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { content: { contains: q, mode: 'insensitive' } },
+        ],
+      }),
+    };
+
+    const [articles, total] = await Promise.all([
+      prisma.article.findMany({
+        where,
+        skip,
+        take: size,
+        include: { author: { select: { name: true } } },
+      }),
+      prisma.article.count({ where }),
+    ]);
+
+    return { articles, total };
+  }
   static async create(data: any, authorId: string) {
     return await prisma.article.create({
       data: {
